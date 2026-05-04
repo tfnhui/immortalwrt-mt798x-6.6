@@ -20,13 +20,11 @@ jobs:
         fetch-depth: 0
 
     - name: Build firmware
-      uses: padavanonly/immortalwrt-mt798x-6.6@main
+      uses: padavanonly/immortalwrt-mt798x-6.6@openwrt-24.10-6.6
       with:
         device: cmcc_rax3000m
-        custom-feeds: |
+        custom-patches: |
+          # 添加 OpenClash 软件源
           echo "src-git openclash https://github.com/vernesong/OpenClash.git" >> feeds.conf.default
         extra-packages: |
           luci-app-openclash
-        custom-patches: |
-          # 可选：添加自定义补丁
-          # git fetch <patch-repo>
