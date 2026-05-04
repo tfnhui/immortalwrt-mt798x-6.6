@@ -25,11 +25,29 @@ jobs:
 
           # 添加 OpenClash 软件源
           echo "src-git openclash https://github.com/vernesong/OpenClash.git" >> feeds.conf.default
+          
+          # 添加 Argon 主题软件源
+          echo "src-git argon https://github.com/jerrykuku/luci-theme-argon.git" >> feeds.conf.default
+          
+          # 更新并安装新添加的 feeds
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-          # 选中 OpenClash 插件
+          # ===== 选中要集成的插件 =====
+          # OpenClash
           echo "CONFIG_PACKAGE_luci-app-openclash=y" >> .config
+          
+          # Argon 主题
+          echo "CONFIG_PACKAGE_luci-theme-argon=y" >> .config
+          
+          # DiskMan 磁盘管理（需要先添加其软件源）
+          echo "CONFIG_PACKAGE_luci-app-diskman=y" >> .config
+          # DiskMan 的依赖（自动挂载、分区工具等）
+          echo "CONFIG_PACKAGE_kmod-scsi-core=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-usb-storage=y" >> .config
+          echo "CONFIG_PACKAGE_block-mount=y" >> .config
+          echo "CONFIG_PACKAGE_cfdisk=y" >> .config
+          echo "CONFIG_PACKAGE_lsblk=y" >> .config
 
           # 生成完整配置
           make defconfig
