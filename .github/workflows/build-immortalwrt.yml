@@ -2,29 +2,44 @@ name: Build ImmortalWrt for RAX3000M with OpenClash
 
 on:
   workflow_dispatch:
-    inputs:
-      openclash_version:
-        description: 'OpenClash version'
-        required: false
-        default: 'master'
-        type: string
 
 jobs:
   build:
     runs-on: ubuntu-22.04
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Build firmware
-      uses: padavanonly/immortalwrt-mt798x-6.6@openwrt-24.10-6.6
-      with:
-        device: cmcc_rax3000m
-        custom-patches: |
+      - name: Build firmware
+        run: |
+          # 克隆源码（使用 openwrt-24.10-6.6 分支）
+          git clone -b openwrt-24.10-6.6 --single-branch --filter=blob:none https://github.com/padavanonly/immortalwrt-mt798x-6.6.git openwrt
+          cd openwrt
+
+          # 更新 feeds
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+          # 复制 RAX3000M 默认配置
+          cp defconfig/mt7981-ax3000.config .config
+
           # 添加 OpenClash 软件源
           echo "src-git openclash https://github.com/vernesong/OpenClash.git" >> feeds.conf.default
-        extra-packages: |
-          luci-app-openclash
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+          # 选中 OpenClash 插件
+          echo "CONFIG_PACKAGE_luci-app-openclash=y" >> .config
+
+          # 生成完整配置
+          make defconfig
+
+          # 开始编译
+          make download -j8
+          make -j$(nproc)
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: immortalwrt-firmware
+          path: openwrt/bin/targets/*/*/
