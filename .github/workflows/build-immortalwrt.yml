@@ -33,6 +33,18 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
+          # ===== 仅保留 RAX3000M 设备配置 =====
+          # 禁用所有其他设备配置
+          echo "CONFIG_TARGET_BOARD=\"mediatek\"" >> .config
+          echo "CONFIG_TARGET_SUBTARGET=\"mt7981\"" >> .config
+          echo "CONFIG_TARGET_PROFILE=\"CMCC_RAX3000M\"" >> .config
+          echo "CONFIG_TARGET_mediatek_mt7981_CMCC_RAX3000M=y" >> .config
+          
+          # 设置仅编译指定设备
+          echo "CONFIG_TARGET_MULTI_PROFILE=n" >> .config
+          echo "CONFIG_TARGET_ALL_PROFILES=n" >> .config
+          echo "CONFIG_TARGET_PER_DEVICE_ROOTFS=y" >> .config
+
           # ===== 选中要集成的插件 =====
           # OpenClash
           echo "CONFIG_PACKAGE_luci-app-openclash=y" >> .config
@@ -40,7 +52,7 @@ jobs:
           # Argon 主题
           echo "CONFIG_PACKAGE_luci-theme-argon=y" >> .config
           
-          # DiskMan 磁盘管理（需要先添加其软件源）
+          # DiskMan 磁盘管理
           echo "CONFIG_PACKAGE_luci-app-diskman=y" >> .config
           # DiskMan 的依赖（自动挂载、分区工具等）
           echo "CONFIG_PACKAGE_kmod-scsi-core=y" >> .config
@@ -49,15 +61,26 @@ jobs:
           echo "CONFIG_PACKAGE_cfdisk=y" >> .config
           echo "CONFIG_PACKAGE_lsblk=y" >> .config
 
-          # 生成完整配置
+          # 生成完整配置并进行依赖检查
           make defconfig
+          
+          # 可选：查看最终配置确认
+          echo "=== 最终设备配置 ==="
+          grep -E "CONFIG_TARGET|CONFIG_PACKAGE" .config | sort
 
-          # 开始编译
-          make download -j8
-          make -j$(nproc)
+          # 下载所有需要的源码包
+          make download -j8 V=s
+
+          # 开始编译（仅编译 RAX3000M）
+          make -j$(nproc) V=s
+
+          # 编译完成后显示输出文件
+          echo "=== 编译完成，输出文件 ==="
+          find bin/targets/ -name "*.bin" -o -name "*.itb" | sort
 
       - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
-          name: immortalwrt-firmware
-          path: openwrt/bin/targets/*/*/
+          name: immortalwrt-rax3000m
+          path: openwrt/bin/targets/mediatek/mt7981/
+          if-no-files-found: error
