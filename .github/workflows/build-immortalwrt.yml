@@ -12,75 +12,98 @@ jobs:
 
       - name: Build firmware
         run: |
-          # 克隆源码（使用 openwrt-24.10-6.6 分支）
+          set -e  # 错误时立即退出
+          
+          # 克隆源码
           git clone -b openwrt-24.10-6.6 --single-branch --filter=blob:none https://github.com/padavanonly/immortalwrt-mt798x-6.6.git openwrt
           cd openwrt
 
-          # 更新 feeds
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
-
-          # 复制 RAX3000M 默认配置
-          cp defconfig/mt7981-ax3000.config .config
-
-          # 添加 OpenClash 软件源
+          # ===== 先添加软件源，再更新 feeds =====
           echo "src-git openclash https://github.com/vernesong/OpenClash.git" >> feeds.conf.default
-          
-          # 添加 Argon 主题软件源
           echo "src-git argon https://github.com/jerrykuku/luci-theme-argon.git" >> feeds.conf.default
           
-          # 更新并安装新添加的 feeds
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-          # ===== 仅保留 RAX3000M 设备配置 =====
-          # 禁用所有其他设备配置
-          echo "CONFIG_TARGET_BOARD=\"mediatek\"" >> .config
-          echo "CONFIG_TARGET_SUBTARGET=\"mt7981\"" >> .config
-          echo "CONFIG_TARGET_PROFILE=\"CMCC_RAX3000M\"" >> .config
-          echo "CONFIG_TARGET_mediatek_mt7981_CMCC_RAX3000M=y" >> .config
+          # ===== 加载 RAX3000M 默认配置 =====
+          cp defconfig/mt7981-ax3000.config .config
           
-          # 设置仅编译指定设备
-          echo "CONFIG_TARGET_MULTI_PROFILE=n" >> .config
-          echo "CONFIG_TARGET_ALL_PROFILES=n" >> .config
+          # ===== 强制只编译 CMCC RAX3000M =====
+          sed -i 's/CONFIG_TARGET_ALL_PROFILES=y/CONFIG_TARGET_ALL_PROFILES=n/' .config
+          sed -i 's/CONFIG_TARGET_MULTI_PROFILE=y/CONFIG_TARGET_MULTI_PROFILE=n/' .config
           echo "CONFIG_TARGET_PER_DEVICE_ROOTFS=y" >> .config
+          
+          # 显式指定 RAX3000M（防止默认配置未包含）
+          echo "CONFIG_TARGET_PROFILE=\"CMCC_RAX3000M\"" >> .config
 
-          # ===== 选中要集成的插件 =====
-          # OpenClash
-          echo "CONFIG_PACKAGE_luci-app-openclash=y" >> .config
+          # ===== 集成插件 + 完整依赖 =====
+          cat >> .config << 'EOF'
+          # OpenClash 及其依赖
+          CONFIG_PACKAGE_luci-app-openclash=y
+          CONFIG_PACKAGE_kmod-tun=y
+          CONFIG_PACKAGE_iptables-mod-tproxy=y
+          CONFIG_PACKAGE_iptables-mod-extra=y
+          CONFIG_PACKAGE_coreutils-nohup=y
+          CONFIG_PACKAGE_bash=y
+          CONFIG_PACKAGE_curl=y
+          CONFIG_PACKAGE_jsonfilter=y
+          CONFIG_PACKAGE_ca-certificates=y
+          CONFIG_PACKAGE_libcap=y
+          CONFIG_PACKAGE_libcap-bin=y
           
           # Argon 主题
-          echo "CONFIG_PACKAGE_luci-theme-argon=y" >> .config
+          CONFIG_PACKAGE_luci-theme-argon=y
           
           # DiskMan 磁盘管理
-          echo "CONFIG_PACKAGE_luci-app-diskman=y" >> .config
-          # DiskMan 的依赖（自动挂载、分区工具等）
-          echo "CONFIG_PACKAGE_kmod-scsi-core=y" >> .config
-          echo "CONFIG_PACKAGE_kmod-usb-storage=y" >> .config
-          echo "CONFIG_PACKAGE_block-mount=y" >> .config
-          echo "CONFIG_PACKAGE_cfdisk=y" >> .config
-          echo "CONFIG_PACKAGE_lsblk=y" >> .config
+          CONFIG_PACKAGE_luci-app-diskman=y
+          CONFIG_PACKAGE_kmod-scsi-core=y
+          CONFIG_PACKAGE_kmod-usb-storage=y
+          CONFIG_PACKAGE_kmod-usb-storage-uas=y
+          CONFIG_PACKAGE_kmod-fs-ext4=y
+          CONFIG_PACKAGE_kmod-fs-vfat=y
+          CONFIG_PACKAGE_kmod-fs-ntfs=y
+          CONFIG_PACKAGE_block-mount=y
+          CONFIG_PACKAGE_blockd=y
+          CONFIG_PACKAGE_cfdisk=y
+          CONFIG_PACKAGE_fdisk=y
+          CONFIG_PACKAGE_lsblk=y
+          CONFIG_PACKAGE_resize2fs=y
+          CONFIG_PACKAGE_e2fsprogs=y
+          CONFIG_PACKAGE_kmod-nls-utf8=y
+          EOF
 
-          # 生成完整配置并进行依赖检查
+          # 生成完整配置
           make defconfig
           
-          # 可选：查看最终配置确认
-          echo "=== 最终设备配置 ==="
-          grep -E "CONFIG_TARGET|CONFIG_PACKAGE" .config | sort
-
-          # 下载所有需要的源码包
-          make download -j8 V=s
-
-          # 开始编译（仅编译 RAX3000M）
-          make -j$(nproc) V=s
-
-          # 编译完成后显示输出文件
-          echo "=== 编译完成，输出文件 ==="
+          # 验证配置
+          echo "=== 验证设备和插件 ==="
+          grep -E "CONFIG_TARGET_PROFILE|CONFIG_PACKAGE_luci-app-openclash|CONFIG_PACKAGE_luci-theme-argon|CONFIG_PACKAGE_luci-app-diskman" .config
+          
+          # 下载（支持重试）
+          make download -j8 V=s || make download -j4 V=s || make download -j1 V=s
+          
+          # 编译（失败时自动降级到单线程排查）
+          echo "=== 开始编译 ==="
+          make -j$(nproc) V=s || { echo "多线程编译失败，尝试单线程..."; make -j1 V=s; }
+          
+          # 检查编译结果
+          if [ ! -d "bin/targets/mediatek/mt7981" ]; then
+            echo "错误：固件目录不存在，编译可能失败"
+            exit 1
+          fi
+          
+          # 输出固件
+          echo "=== 编译完成，固件列表 ==="
           find bin/targets/ -name "*.bin" -o -name "*.itb" | sort
+          
+          # 显示固件大小
+          echo "=== 固件大小 ==="
+          find bin/targets/ -name "*.bin" -exec ls -lh {} \;
 
       - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
-          name: immortalwrt-rax3000m
+          name: immortalwrt-rax3000m-$(date +'%Y%m%d')
           path: openwrt/bin/targets/mediatek/mt7981/
           if-no-files-found: error
+          retention-days: 7
