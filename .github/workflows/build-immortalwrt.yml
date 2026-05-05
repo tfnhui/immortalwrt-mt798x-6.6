@@ -12,33 +12,25 @@ jobs:
 
       - name: Build firmware
         run: |
-          set -e  # 错误时立即退出
+          set -e
           
-          # 克隆源码
           git clone -b openwrt-24.10-6.6 --single-branch --filter=blob:none https://github.com/padavanonly/immortalwrt-mt798x-6.6.git openwrt
           cd openwrt
 
-          # ===== 先添加软件源，再更新 feeds =====
           echo "src-git openclash https://github.com/vernesong/OpenClash.git" >> feeds.conf.default
           echo "src-git argon https://github.com/jerrykuku/luci-theme-argon.git" >> feeds.conf.default
           
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-          # ===== 加载 RAX3000M 默认配置 =====
           cp defconfig/mt7981-ax3000.config .config
           
-          # ===== 强制只编译 CMCC RAX3000M =====
           sed -i 's/CONFIG_TARGET_ALL_PROFILES=y/CONFIG_TARGET_ALL_PROFILES=n/' .config
           sed -i 's/CONFIG_TARGET_MULTI_PROFILE=y/CONFIG_TARGET_MULTI_PROFILE=n/' .config
           echo "CONFIG_TARGET_PER_DEVICE_ROOTFS=y" >> .config
-          
-          # 显式指定 RAX3000M（防止默认配置未包含）
           echo "CONFIG_TARGET_PROFILE=\"CMCC_RAX3000M\"" >> .config
 
-          # ===== 集成插件 + 完整依赖 =====
           cat >> .config << 'EOF'
-          # OpenClash 及其依赖
           CONFIG_PACKAGE_luci-app-openclash=y
           CONFIG_PACKAGE_kmod-tun=y
           CONFIG_PACKAGE_iptables-mod-tproxy=y
@@ -50,11 +42,7 @@ jobs:
           CONFIG_PACKAGE_ca-certificates=y
           CONFIG_PACKAGE_libcap=y
           CONFIG_PACKAGE_libcap-bin=y
-          
-          # Argon 主题
           CONFIG_PACKAGE_luci-theme-argon=y
-          
-          # DiskMan 磁盘管理
           CONFIG_PACKAGE_luci-app-diskman=y
           CONFIG_PACKAGE_kmod-scsi-core=y
           CONFIG_PACKAGE_kmod-usb-storage=y
@@ -72,33 +60,9 @@ jobs:
           CONFIG_PACKAGE_kmod-nls-utf8=y
           EOF
 
-          # 生成完整配置
           make defconfig
-          
-          # 验证配置
-          echo "=== 验证设备和插件 ==="
-          grep -E "CONFIG_TARGET_PROFILE|CONFIG_PACKAGE_luci-app-openclash|CONFIG_PACKAGE_luci-theme-argon|CONFIG_PACKAGE_luci-app-diskman" .config
-          
-          # 下载（支持重试）
-          make download -j8 V=s || make download -j4 V=s || make download -j1 V=s
-          
-          # 编译（失败时自动降级到单线程排查）
-          echo "=== 开始编译 ==="
-          make -j$(nproc) V=s || { echo "多线程编译失败，尝试单线程..."; make -j1 V=s; }
-          
-          # 检查编译结果
-          if [ ! -d "bin/targets/mediatek/mt7981" ]; then
-            echo "错误：固件目录不存在，编译可能失败"
-            exit 1
-          fi
-          
-          # 输出固件
-          echo "=== 编译完成，固件列表 ==="
-          find bin/targets/ -name "*.bin" -o -name "*.itb" | sort
-          
-          # 显示固件大小
-          echo "=== 固件大小 ==="
-          find bin/targets/ -name "*.bin" -exec ls -lh {} \;
+          make download -j8
+          make -j$(nproc)
 
       - name: Upload firmware
         uses: actions/upload-artifact@v4
