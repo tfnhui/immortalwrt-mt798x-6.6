@@ -1,4 +1,4 @@
-name: Build ImmortalWrt for RAX3000M with OpenClash
+name: Build ImmortalWrt 6.6 for RAX3000M
 
 on:
   workflow_dispatch:
@@ -12,68 +12,28 @@ jobs:
 
       - name: Build firmware
         run: |
-          set -e
-          
-          git clone -b openwrt-24.10-6.6 --single-branch --filter=blob:none https://github.com/padavanonly/immortalwrt-mt798x-6.6.git openwrt
+          # 克隆 kernel 6.6 版本的仓库源码
+          git clone https://github.com/tfnhui/immortalwrt-mt798x-6.6.git openwrt
           cd openwrt
 
-          echo "src-git openclash https://github.com/vernesong/OpenClash.git" >> feeds.conf.default
-          echo "src-git argon https://github.com/jerrykuku/luci-theme-argon.git" >> feeds.conf.default
-          
+          # 更新 feeds
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
+          # 复制 RAX3000M 的配置文件（MT7981 芯片通用）
           cp defconfig/mt7981-ax3000.config .config
-          
-          sed -i 's/CONFIG_TARGET_ALL_PROFILES=y/CONFIG_TARGET_ALL_PROFILES=n/' .config
-          sed -i 's/CONFIG_TARGET_MULTI_PROFILE=y/CONFIG_TARGET_MULTI_PROFILE=n/' .config
-          echo "CONFIG_TARGET_PER_DEVICE_ROOTFS=y" >> .config
-          echo "CONFIG_TARGET_PROFILE=\"CMCC_RAX3000M\"" >> .config
 
-          cat >> .config << 'EOF'
-          CONFIG_PACKAGE_luci-app-openclash=y
-          CONFIG_PACKAGE_kmod-tun=y
-          CONFIG_PACKAGE_iptables-mod-tproxy=y
-          CONFIG_PACKAGE_iptables-mod-extra=y
-          CONFIG_PACKAGE_coreutils-nohup=y
-          CONFIG_PACKAGE_bash=y
-          CONFIG_PACKAGE_curl=y
-          CONFIG_PACKAGE_jsonfilter=y
-          CONFIG_PACKAGE_ca-certificates=y
-          CONFIG_PACKAGE_libcap=y
-          CONFIG_PACKAGE_libcap-bin=y
-          CONFIG_PACKAGE_luci-theme-argon=y
-          CONFIG_PACKAGE_luci-app-diskman=y
-          CONFIG_PACKAGE_kmod-scsi-core=y
-          CONFIG_PACKAGE_kmod-usb-storage=y
-          CONFIG_PACKAGE_kmod-usb-storage-uas=y
-          CONFIG_PACKAGE_kmod-fs-ext4=y
-          CONFIG_PACKAGE_kmod-fs-vfat=y
-          CONFIG_PACKAGE_kmod-fs-ntfs=y
-          CONFIG_PACKAGE_block-mount=y
-          CONFIG_PACKAGE_blockd=y
-          CONFIG_PACKAGE_cfdisk=y
-          CONFIG_PACKAGE_fdisk=y
-          CONFIG_PACKAGE_lsblk=y
-          CONFIG_PACKAGE_resize2fs=y
-          CONFIG_PACKAGE_e2fsprogs=y
-          CONFIG_PACKAGE_kmod-nls-utf8=y
-          EOF
-
+          # 生成完整配置
           make defconfig
+
+          # 下载编译所需的源码包
           make download -j8
 
-          # ==================== 这里是新加的：修改默认 LAN IP 为 192.168.1.1 ====================
-          sed -i 's/192.168.100.1/192.168.1.1/' package/base-files/files/bin/config_generate
-          sed -i 's/192.168.100.1/192.168.1.1/' package/base-files/files/etc/board.d/99-default_network
-          # ==================== 加完了 ====================
-
-          make -j$(nproc)
+          # 开始编译，如果失败则单线程详细输出调试
+          make -j$(nproc) || make -j1 V=s
 
       - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
-          name: immortalwrt-rax3000m-$(date +'%Y%m%d')
+          name: immortalwrt-6.6-rax3000m-firmware
           path: openwrt/bin/targets/mediatek/mt7981/
-          if-no-files-found: error
-          retention-days: 7
