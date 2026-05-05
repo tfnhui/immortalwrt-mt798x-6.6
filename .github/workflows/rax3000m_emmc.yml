@@ -31,7 +31,10 @@ jobs:
 
           # 编译（先多核，失败转单核调试）
           make -j$(nproc) || make -j1 V=s
-
+          
+          # 删除 packages 目录（不需要上传）
+          rm -rf bin/targets/mediatek/filogic/packages
+          
       - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
