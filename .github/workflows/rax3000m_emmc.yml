@@ -46,7 +46,7 @@ jobs:
           name: immortalwrt-24.10-rax3000m-firmware
           path: openwrt/bin/targets/mediatek/filogic/
           if-no-files-found: error
-
+ 
       - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v1
         with:
