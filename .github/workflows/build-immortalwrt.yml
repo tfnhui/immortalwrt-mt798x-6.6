@@ -62,6 +62,12 @@ jobs:
 
           make defconfig
           make download -j8
+
+          # ==================== 这里是新加的：修改默认 LAN IP 为 192.168.1.1 ====================
+          sed -i 's/192.168.100.1/192.168.1.1/' package/base-files/files/bin/config_generate
+          sed -i 's/192.168.100.1/192.168.1.1/' package/base-files/files/etc/board.d/99-default_network
+          # ==================== 加完了 ====================
+
           make -j$(nproc)
 
       - name: Upload firmware
